@@ -1,0 +1,327 @@
+---
+title: "analisisMoRF"
+author: "Jose Alberto Cabanes Madrid"
+date: "2024-07-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(readr)
+library(data.table)
+```
+
+# ELF4 
+
+Carga de datos de cada uno de los predictores:
+
+```{r}
+ELF4.ANCHOR <- read.delim("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 IUPred2A.txt")
+
+ELF4.MoRFCHIBI <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 MoRFCHIBI.txt", quote="\"",
+                            col.names = c("POS", "AA", "MORFCHIBI.SCORE", "V4", "V5", "V6", "V7", "V8"))
+
+suppressMessages({
+  ELF4.MoRFpred <- as.data.frame(t(read_csv("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 MoRFpred.csv"))[-1,])
+names(ELF4.MoRFpred) <- c("IDR", "MORFPRED.SCORE")
+})
+```
+
+Carga del consenso de regiones desordenadas de analisisIDR.rmd:
+
+```{r}
+ELF4_tramosIDRdf <- readRDS("ELF4_tramosIDR.rds")
+```
+
+Agrupación de datos en un solo dataframe: 
+
+```{r}
+ELF4.MORF <- data.frame(
+  POS = ELF4.ANCHOR$POS,
+  ANCHOR.SCORE = ELF4.ANCHOR$ANCHOR.SCORE,
+  MORFCHIBI.SCORE = ELF4.MoRFCHIBI$MORFCHIBI.SCORE,
+  MORFPRED.SCORE = ELF4.MoRFpred$MORFPRED.SCORE
+)
+```
+
+Indicar las regiones consideradas MoRF por al menos 1 de los 3 algoritmos de predicción (umbral de 0.5 para ANCHOR y MORFPRED, y de 0.725 para MORFCHIBI):
+
+```{r}
+ELF4.MORF$MORF <- "NO"
+ELF4.MORF$conteo_morf <- rowSums(ELF4.MORF[, c("ANCHOR.SCORE", "MORFPRED.SCORE")] >= 0.5)
+ELF4.MORF$conteo_morf <- ELF4.MORF$conteo_morf + (ELF4.MORF$MORFCHIBI.SCORE >= 0.725)
+ELF4.MORF$MORF[ELF4.MORF$conteo_morf >= 1] <- "SI"
+saveRDS(ELF4.MORF, file="ELF4.MORF.rds")
+```
+
+Filtrar los residuos MoRF, quedándonos únicamente con aquellos incluidos en las IDR previamente consensuadas:
+
+```{r}
+MoRF_IDR_ELF4 <- subset(ELF4.MORF, MORF == "SI" & POS %in% unlist(Map(`:`, ELF4_tramosIDRdf$inicio, ELF4_tramosIDRdf$fin)))
+```
+
+Obtener un listado con las regiones MoRF inicio-fin: 
+
+```{r}
+# Convertir a formato data.table
+setDT(MoRF_IDR_ELF4)
+
+# Identificar tramos continuos
+MoRF_IDR_ELF4[, grp := cumsum(c(1, diff(POS) != 1))]
+
+# Calcular inicio y fin de cada tramo
+ELF4_tramosMoRFdf <- MoRF_IDR_ELF4[, .(inicio = min(POS), fin = max(POS)), by = grp]
+```
+
+Representación de los MoRF en IDR:
+
+```{r}
+colores <- c("#EFF3FF", "#BDD7E7", "#6BAED6")
+
+# Crear el gráfico de barras
+ggplot(MoRF_IDR_ELF4, aes(x = POS, y = conteo_morf)) +
+  geom_bar(stat = "identity", fill = colores[MoRF_IDR_ELF4$conteo_morf + 1]) +
+  scale_fill_identity() +
+  ggtitle("Detección de MoRF en ELF4") +
+  labs(x = "Residuos", y = "Conteo MoRF") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(1, 111, by = 10)) +
+  scale_y_continuous(limits = c(0, 3), breaks = seq(0, 3, by = 1))
+```
+
+Evaluar la relación entre los resultados de los predictores MoRF y las diferencias observadas en el valor pLDDT entre los modelos monomérico y multimérico de AlphaFold a lo largo de la secuencia:
+
+```{r}
+# Carga del archivo de valores de pLDDT en los diferentes modelos de AlphaFold
+ELF4_pLDDT <- readRDS("ELF4_pLDDT.rds")
+
+# Fusionar los dataframes por la columna POS
+pLDDTvsMORF_ELF4 <- merge(ELF4_pLDDT, ELF4.MORF, by = "POS")
+
+# Ajustar el modelo ANOVA
+anova <- aov(difference ~ factor(conteo_morf), data = pLDDTvsMORF_ELF4)
+
+# Verificación de Normalidad de los Residuos
+residuos <- residuals(anova)
+shapiro_test <- shapiro.test(residuos)
+print(shapiro_test)
+```
+
+Puesto que los datos no siguen una distribución normal (p-valor <0.05 en Shapiro-test), analizaremos la relación entre las variables mediante el método de correlación de Spearman:
+
+```{r}
+correlation <- cor.test(abs(pLDDTvsMORF_ELF4$difference), pLDDTvsMORF_ELF4$conteo_morf, method = "spearman")
+print(correlation)
+```
+
+
+# LUX
+
+Carga de datos de cada uno de los predictores:
+
+```{r}
+LUX.ANCHOR <- read.delim("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX IUPred2A.txt")
+
+LUX.MoRFCHIBI <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX MoRFCHIBI.txt", quote="\"",
+                            col.names = c("POS", "AA", "MORFCHIBI.SCORE", "V4", "V5", "V6", "V7", "V8"))
+
+suppressMessages({
+  LUX.MoRFpred <- as.data.frame(t(read_csv("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX MoRFpred.csv"))[-1,])
+names(LUX.MoRFpred) <- c("IDR", "MORFPRED.SCORE")
+})
+```
+
+Carga del consenso de regiones desordenadas de analisisIDR.rmd:
+
+```{r}
+LUX_tramosIDRdf <- readRDS("LUX_tramosIDR.rds")
+```
+
+Agrupación de datos en un solo dataframe: 
+
+```{r}
+LUX.MORF <- data.frame(
+  POS = LUX.ANCHOR$POS,
+  ANCHOR.SCORE = LUX.ANCHOR$ANCHOR.SCORE,
+  MORFCHIBI.SCORE = LUX.MoRFCHIBI$MORFCHIBI.SCORE,
+  MORFPRED.SCORE = LUX.MoRFpred$MORFPRED.SCORE
+)
+```
+
+Indicar las regiones consideradas MoRF por al menos 1 de los 3 algoritmos de predicción (umbral de 0.5 para ANCHOR y MORFPRED, y de 0.725 para MORFCHIBI):
+
+```{r}
+LUX.MORF$MORF <- "NO"
+LUX.MORF$conteo_morf <- rowSums(LUX.MORF[, c("ANCHOR.SCORE", "MORFPRED.SCORE")] >= 0.5)
+LUX.MORF$conteo_morf <- LUX.MORF$conteo_morf + (LUX.MORF$MORFCHIBI.SCORE >= 0.725)
+LUX.MORF$MORF[LUX.MORF$conteo_morf >= 1] <- "SI"
+saveRDS(LUX.MORF, file="LUX.MORF.rds")
+```
+
+Filtrar los residuos MoRF, quedándonos únicamente con aquellos incluidos en las IDR previamente consensuadas:
+
+```{r}
+MoRF_IDR_LUX <- subset(LUX.MORF, MORF == "SI" & POS %in% unlist(Map(`:`, LUX_tramosIDRdf$inicio, LUX_tramosIDRdf$fin)))
+```
+
+Obtener un listado con las regiones MoRF inicio-fin: 
+
+```{r}
+# Convertir a formato data.table
+setDT(MoRF_IDR_LUX)
+
+# Identificar tramos continuos
+MoRF_IDR_LUX[, grp := cumsum(c(1, diff(POS) != 1))]
+
+# Calcular inicio y fin de cada tramo
+LUX_tramosMoRFdf <- MoRF_IDR_LUX[, .(inicio = min(POS), fin = max(POS)), by = grp]
+```
+
+Representación de los MoRF en IDR:
+
+```{r}
+colores <- c("#FFFFCC", "#FFD700", "#B8860B")
+
+# Crear el gráfico de barras
+ggplot(MoRF_IDR_LUX, aes(x = POS, y = conteo_morf)) +
+  geom_bar(stat = "identity", fill = colores[MoRF_IDR_LUX$conteo_morf + 1]) +
+  scale_fill_identity() +
+  ggtitle("Detección de MoRF en LUX") +
+  labs(x = "Residuos", y = "Conteo MoRF") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(1, 323, by = 40)) +
+  scale_y_continuous(limits = c(0, 3), breaks = seq(0, 3, by = 1))
+```
+
+Evaluar la relación entre los resultados de los predictores MoRF y las diferencias observadas en el valor pLDDT entre los modelos monomérico y multimérico de AlphaFold a lo largo de la secuencia:
+
+```{r}
+# Carga del archivo de valores de pLDDT en los diferentes modelos de AlphaFold
+LUX_pLDDT <- readRDS("LUX_pLDDT.rds")
+
+# Fusionar los dataframes por la columna POS
+pLDDTvsMORF_LUX <- merge(LUX_pLDDT, LUX.MORF, by = "POS")
+
+# Ajustar el modelo ANOVA
+anova <- aov(difference ~ factor(conteo_morf), data = pLDDTvsMORF_LUX)
+
+# Verificación de Normalidad de los Residuos
+residuos <- residuals(anova)
+shapiro_test <- shapiro.test(residuos)
+print(shapiro_test)
+```
+
+Puesto que los datos no siguen una distribución normal (p-valor <0.05 en Shapiro-test), analizaremos la relación entre las variables mediante el método de correlación de Spearman:
+
+```{r}
+correlation <- cor.test(abs(pLDDTvsMORF_LUX$difference), pLDDTvsMORF_LUX$conteo_morf, method = "spearman")
+print(correlation)
+```
+
+# ELF3
+
+Carga de datos de cada uno de los predictores:
+
+```{r}
+ELF3.ANCHOR <- read.delim("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 IUPred2A.txt")
+
+ELF3.MoRFCHIBI <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 MoRFCHIBI.txt", quote="\"",
+                            col.names = c("POS", "AA", "MORFCHIBI.SCORE", "V4", "V5", "V6", "V7", "V8"))
+
+suppressMessages({
+  ELF3.MoRFpred <- as.data.frame(t(read_csv("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 MoRFpred.csv"))[-1,])
+names(ELF3.MoRFpred) <- c("IDR", "MORFPRED.SCORE")
+})
+```
+
+Carga del consenso de regiones desordenadas de analisisIDR.rmd:
+
+```{r}
+ELF3_tramosIDRdf <- readRDS("ELF3_tramosIDR.rds")
+```
+
+Agrupación de datos en un solo dataframe: 
+
+```{r}
+ELF3.MORF <- data.frame(
+  POS = ELF3.ANCHOR$POS,
+  ANCHOR.SCORE = ELF3.ANCHOR$ANCHOR.SCORE,
+  MORFCHIBI.SCORE = ELF3.MoRFCHIBI$MORFCHIBI.SCORE,
+  MORFPRED.SCORE = ELF3.MoRFpred$MORFPRED.SCORE
+)
+```
+
+Indicar las regiones consideradas MoRF por al menos 1 de los 3 algoritmos de predicción (umbral de 0.5 para ANCHOR y MORFPRED, y de 0.725 para MORFCHIBI):
+
+```{r}
+ELF3.MORF$MORF <- "NO"
+ELF3.MORF$conteo_morf <- rowSums(ELF3.MORF[, c("ANCHOR.SCORE", "MORFPRED.SCORE")] >= 0.5)
+ELF3.MORF$conteo_morf <- ELF3.MORF$conteo_morf + (ELF3.MORF$MORFCHIBI.SCORE >= 0.725)
+ELF3.MORF$MORF[ELF3.MORF$conteo_morf >= 1] <- "SI"
+saveRDS(ELF3.MORF, file="ELF3.MORF.rds")
+```
+
+Filtrar las regiones MoRF, quedándonos únicamente con aquellas incluidas en las IDR previamente consensuadas:
+
+```{r}
+MoRF_IDR_ELF3 <- subset(ELF3.MORF, MORF == "SI" & POS %in% unlist(Map(`:`, ELF3_tramosIDRdf$inicio, ELF3_tramosIDRdf$fin)))
+```
+
+Obtener un listado con las regiones MoRF inicio-fin: 
+
+```{r}
+# Convertir a formato data.table
+setDT(MoRF_IDR_ELF3)
+
+# Identificar tramos continuos
+MoRF_IDR_ELF3[, grp := cumsum(c(1, diff(POS) != 1))]
+
+# Calcular inicio y fin de cada tramo
+ELF3_tramosMoRFdf <- MoRF_IDR_ELF3[, .(inicio = min(POS), fin = max(POS)), by = grp]
+```
+
+Representación de los MoRF en IDR:
+
+```{r}
+colores <- c("#FFCCCC", "#FF6666", "#FF0000")
+
+# Crear el gráfico de barras
+ggplot(MoRF_IDR_ELF3, aes(x = POS, y = conteo_morf)) +
+  geom_bar(stat = "identity", fill = colores[MoRF_IDR_ELF3$conteo_morf + 1]) +
+  scale_fill_identity() +
+  ggtitle("Detección de MoRF en ELF3") +
+  labs(x = "Residuos", y = "Conteo MoRF") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(1, 695, by = 40)) +
+  scale_y_continuous(limits = c(0, 3), breaks = seq(0, 3, by = 1))
+```
+
+Evaluar la relación entre los resultados de los predictores MoRF y las diferencias observadas en el valor pLDDT entre los modelos monomérico y multimérico de AlphaFold a lo largo de la secuencia:
+
+```{r}
+# Carga del archivo de valores de pLDDT en los diferentes modelos de AlphaFold
+ELF3_pLDDT <- readRDS("ELF3_pLDDT.rds")
+
+# Fusionar los dataframes por la columna POS
+pLDDTvsMORF_ELF3 <- merge(ELF3_pLDDT, ELF3.MORF, by = "POS")
+
+# Ajustar el modelo ANOVA
+anova <- aov(difference ~ factor(conteo_morf), data = pLDDTvsMORF_ELF3)
+
+# Verificación de Normalidad de los Residuos
+residuos <- residuals(anova)
+shapiro_test <- shapiro.test(residuos)
+print(shapiro_test)
+```
+
+Puesto que los datos no siguen una distribución normal (p-valor <0.05 en Shapiro-test), analizaremos la relación entre las variables mediante el método de correlación de Spearman:
+
+```{r}
+correlation <- cor.test(abs(pLDDTvsMORF_ELF3$difference), pLDDTvsMORF_ELF3$conteo_morf, method = "spearman")
+print(correlation)
+```
+

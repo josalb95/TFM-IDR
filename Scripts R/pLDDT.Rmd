@@ -1,0 +1,380 @@
+---
+title: "Untitled"
+author: "Jose Alberto Cabanes Madrid"
+date: "2024-06-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(ggrepel)
+library(readr)
+library(gridExtra)
+```
+
+# ELF4
+
+Carga de valores pLDDT de ELF4:
+
+```{r}
+elf4_solo <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 pLDDT.txt", quote="\"", comment.char="")
+elf4_solo <- aggregate(V15 ~ V16, data = elf4_solo, FUN = mean)
+
+elf4_EC <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4_EC pLDDT.txt", quote="\"", comment.char="")
+elf4_EC <- aggregate(V15 ~ V16, data = elf4_EC, FUN = mean)
+
+elf4_ELF3 <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4_ELF3 pLDDT.txt", quote="\"", comment.char="")
+elf4_ELF3 <- aggregate(V15 ~ V16, data = elf4_ELF3, FUN = mean)
+
+elf4_ELF3Trunc <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4_ELF3Trunc pLDDT.txt", quote="\"", comment.char="")
+elf4_ELF3Trunc <- aggregate(V15 ~ V16, data = elf4_ELF3Trunc, FUN = mean)
+
+# Fusionar los dataframes
+ELF4_pLDDT <- merge(elf4_solo, elf4_EC, by = "V16")
+ELF4_pLDDT <- merge(ELF4_pLDDT, elf4_ELF3, by = "V16")
+ELF4_pLDDT <- merge(ELF4_pLDDT, elf4_ELF3Trunc, by = "V16")
+
+
+# Renombrar columnas
+colnames(ELF4_pLDDT) <- c("POS", "pLDDT_solo", "pLDDT_EC", "pLDDT_ELF3", "pLDDT_ELF3Trunc")
+```
+
+Representación de los valores de pLDDT en el modelo de ELF4 aislada:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(ELF4_pLDDT$POS[which(diff(sign(ELF4_pLDDT$pLDDT_solo - 50)) != 0)] )
+)
+
+ggplot(ELF4_pLDDT, aes(x = POS, y = pLDDT_solo)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), vjust = -1, angle = 90) +
+  
+  labs(title = "pLDDT por residuo - ELF4 (Solo)",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 111, by = 5)) +
+  scale_y_continuous(limits = c(0, 100))
+```
+
+Representación de los valores de pLDDT en el modelo de ELF4 en complejo:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(ELF4_pLDDT$POS[which(diff(sign(ELF4_pLDDT$pLDDT_EC - 50)) != 0)] )
+)
+
+ggplot(ELF4_pLDDT, aes(x = POS, y = pLDDT_EC)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text_repel(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), angle = 90, vjust = -2, nudge_y = 3, max.overlaps = 3) +
+  
+  labs(title = "pLDDT por residuo (Alphafold) - ELF4 en EC",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 111, by = 5)) +
+  scale_y_continuous(limits = c(0, 100))
+
+```
+
+Representación de los valores de pLDDT en el modelo de ELF4 con ELF3:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(ELF4_pLDDT$POS[which(diff(sign(ELF4_pLDDT$pLDDT_ELF3 - 50)) != 0)] )
+)
+
+ggplot(ELF4_pLDDT, aes(x = POS, y = pLDDT_ELF3)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text_repel(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), angle = 90, vjust = -2, nudge_y = 3, max.overlaps = 3) +
+  
+  labs(title = "pLDDT por residuo - ELF4 con ELF3",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 111, by = 5)) +
+  scale_y_continuous(limits = c(0, 100))
+
+```
+
+Representación de los valores de pLDDT en el modelo de ELF4 con ELF3 truncada:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(ELF4_pLDDT$POS[which(diff(sign(ELF4_pLDDT$pLDDT_ELF3Trunc - 50)) != 0)] )
+)
+
+ggplot(ELF4_pLDDT, aes(x = POS, y = pLDDT_ELF3Trunc)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text_repel(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), angle = 90, vjust = -2, nudge_y = 3, max.overlaps = 3) +
+  
+  labs(title = "pLDDT por residuo (Alphafold) - ELF3_EC",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 111, by = 5)) +
+  scale_y_continuous(limits = c(0, 100))
+```
+
+Representar la diferencia entre pLDDT_ELF3 y pLDDT_solo:
+
+```{r}
+ELF4_pLDDT$difference <- ELF4_pLDDT$pLDDT_ELF3 - ELF4_pLDDT$pLDDT_solo
+saveRDS(ELF4_pLDDT, file="ELF4_pLDDT.rds")
+
+ggplot(ELF4_pLDDT, aes(x = POS, y = difference)) +
+  geom_bar(stat = "identity", fill = "dodgerblue3") +
+  labs(x = "Número de residuo", y = "pLDDT_ELF3 - pLDDT_Solo", 
+       title = "Variación de los valores pLDDT por residuo en ELF4") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(1, 111, by = 10)) +
+  theme(axis.text.x = element_text(hjust = 1))
+
+```
+
+
+
+
+# LUX
+
+Carga de valores pLDDT de LUX:
+
+```{r}
+lux_solo <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX pLDDT.txt", quote="\"", comment.char="")
+lux_solo <- aggregate(V15 ~ V16, data = lux_solo, FUN = mean)
+
+lux_EC <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX_EC pLDDT.txt", quote="\"", comment.char="")
+lux_EC <- aggregate(V15 ~ V16, data = lux_EC, FUN = mean)
+
+# Fusionar los dataframes
+LUX_pLDDT <- merge(lux_solo, lux_EC, by = "V16")
+
+# Renombrar columnas
+colnames(LUX_pLDDT) <- c("POS", "pLDDT_solo", "pLDDT_EC")
+```
+
+Representación de valores de pLDDT del modelo de LUX aislada:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(LUX_pLDDT$POS[which(diff(sign(LUX_pLDDT$pLDDT_solo - 50)) != 0)] )
+)
+
+ggplot(LUX_pLDDT, aes(x = POS, y = pLDDT_solo)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text_repel(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), angle = 90, vjust = -2, nudge_y = 3, max.overlaps = 5) +
+  
+  labs(title = "pLDDT por residuo - LUX (Solo)",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 323, by = 40)) +
+  scale_y_continuous(limits = c(0, 100))
+
+```
+
+Representación de valores de pLDDT del modelo de ELF3 en EC:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(LUX_pLDDT$POS[which(diff(sign(LUX_pLDDT$pLDDT_EC - 50)) != 0)] )
+)
+
+ggplot(LUX_pLDDT, aes(x = POS, y = pLDDT_EC)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text_repel(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), angle = 90, vjust = -2, nudge_y = 3, max.overlaps = 5) +
+  
+  labs(title = "pLDDT por residuo - LUX en EC",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 323, by = 40)) +
+  scale_y_continuous(limits = c(0, 100))
+
+```
+
+Representar la diferencia entre pLDDT_EC y pLDDT_solo:
+
+```{r}
+LUX_pLDDT$difference <- LUX_pLDDT$pLDDT_EC - LUX_pLDDT$pLDDT_solo
+saveRDS(LUX_pLDDT, file="LUX_pLDDT.rds")
+
+ggplot(LUX_pLDDT, aes(x = POS, y = difference)) +
+  geom_bar(stat = "identity", fill = "gold") +
+  labs(x = "Número de residuo", y = "pLDDT_EC - pLDDT_Solo", 
+       title = "Variación de los valores pLDDT por residuo en LUX") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(1, 323, by = 40)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+
+# ELF3
+
+Carga de valores pLDDT de ELF3:
+
+```{r}
+elf3_solo <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 pLDDT.txt", quote="\"", comment.char="")
+elf3_solo <- aggregate(V15 ~ V16, data = elf3_solo, FUN = mean)
+
+elf3_EC <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3_EC pLDDT.txt", quote="\"", comment.char="")
+elf3_EC <- aggregate(V15 ~ V16, data = elf3_EC, FUN = mean)
+
+# Fusionar los dataframes
+ELF3_pLDDT <- merge(elf3_solo, elf3_EC, by = "V16")
+
+# Renombrar columnas
+colnames(ELF3_pLDDT) <- c("POS", "pLDDT_solo", "pLDDT_EC")
+```
+
+Representación de valores de pLDDT del modelo de ELF3 aislada:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(ELF3_pLDDT$POS[which(diff(sign(ELF3_pLDDT$pLDDT_solo - 50)) != 0)] )
+)
+
+ggplot(ELF3_pLDDT, aes(x = POS, y = pLDDT_solo)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text_repel(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), angle = 90, vjust = -2, nudge_y = 3, max.overlaps = 5) +
+  
+  labs(title = "pLDDT por residuo (Alphafold) - ELF3 (Solo)",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 695, by = 40)) +
+  scale_y_continuous(limits = c(0, 100))
+
+```
+
+Representación de valores de pLDDT del modelo de ELF3 en EC:
+
+```{r}
+crossings <- data.frame(
+  res_cambio = c(ELF3_pLDDT$POS[which(diff(sign(ELF3_pLDDT$pLDDT_EC - 50)) != 0)] )
+)
+
+ggplot(ELF3_pLDDT, aes(x = POS, y = pLDDT_EC)) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 90, ymax = 100), fill = "4f82e1", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 70, ymax = 90), fill = "5dc1f3", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 50, ymax = 70), fill = "#FFFF80", alpha = 0.8) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = 0, ymax = 50), fill = "#F6AC50", alpha = 0.8) +
+  
+  geom_line(color = "gray20", size = 1) +
+  
+  geom_vline(data = crossings, aes(xintercept = res_cambio), linetype = "dashed", color = "white") + 
+  geom_text_repel(data = crossings, aes(x = res_cambio, y = 50, label = res_cambio), angle = 90, vjust = -2, nudge_y = 3, max.overlaps = 5) +
+  
+  labs(title = "pLDDT por residuo (Alphafold) - ELF3 en EC",
+       x = "Número de residuo",
+       y = "pLDDT") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(size = 12),
+        axis.title.y = element_text(size = 12),
+        axis.text = element_text(size = 10)) +
+  scale_x_continuous(breaks = seq(1, 695, by = 40)) +
+  scale_y_continuous(limits = c(0, 100))
+
+```
+
+Representar la diferencia entre pLDDT_EC y pLDDT_solo:
+
+```{r}
+ELF3_pLDDT$difference <- ELF3_pLDDT$pLDDT_EC - ELF3_pLDDT$pLDDT_solo
+saveRDS(ELF3_pLDDT, file="ELF3_pLDDT.rds")
+
+ggplot(ELF3_pLDDT, aes(x = POS, y = difference)) +
+  geom_bar(stat = "identity", fill = "violetred3") +
+  labs(x = "Número de residuo", y = "pLDDT_EC - pLDDT_Solo", 
+       title = "Variación de los valores pLDDT por residuo en ELF3") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(1, 695, by = 40)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+
