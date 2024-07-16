@@ -1,0 +1,339 @@
+---
+title: "Análisis de IDR"
+author: "Jose Alberto Cabanes Madrid"
+date: "2024-06-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(ggrepel)
+library(readr)
+```
+
+Función para generar una lista de tramos desordenados. Tras ello, filtra los tramos desordenados, "fusionando" aquellos de tres o más residuos separados por regiones estructuradas de dos o menos residuos, y descartando los tramos desordenados de dos o menos residuos flanqueados por tramos estructurados de tres o más residuos.:
+
+```{r}
+idr <- function(df) {
+
+# Variable para almacenar los tramos desordenados y, posteriormente, los tramos combinados y filtrados
+tramos_desordenados <- list()
+tramos_combinados <- list()
+tramos_filtrados <- list()
+
+# Variables auxiliares para registrar los límites de los tramos desordenados
+inicio_tramo <- 1
+en_desorden <- FALSE
+
+# Iteración a través de las filas para identificar los tramos desordenados
+for (i in 1:nrow(df)) {
+  if (df$DESORDEN[i] == "desorden") {
+    if (!en_desorden) {
+      # Inicio de un nuevo tramo desordenado
+      inicio_tramo <- i
+      en_desorden <- TRUE
+    }
+  } else {
+    if (en_desorden) {
+      # Fin de un tramo desordenado
+      tramos_desordenados <- c(tramos_desordenados, list(c(inicio_tramo, i - 1)))
+      en_desorden <- FALSE
+    }
+  }
+}
+
+# Añadir el último tramo desordenado si termina en "desorden"
+if (en_desorden) {
+  tramos_desordenados <- c(tramos_desordenados, list(c(inicio_tramo, nrow(df))))
+}
+
+# Recorrer los tramos de desorden originales
+for (tramo in tramos_desordenados) {
+  inicio <- tramo[1]
+  fin <- tramo[2]
+  
+  # Verificar longitud del tramo desordenado
+  longitud_desorden <- fin - inicio + 1
+  
+  # Verificar si el tramo actual puede combinarse con el último tramo en tramos_combinados
+  if (length(tramos_combinados) > 0) {
+    ultimo_tramo <- tramos_combinados[[length(tramos_combinados)]]
+    if (inicio - ultimo_tramo[2] <= 3) {
+      # Fusionar tramos si están separados por uno o dos residuos "estructura"
+      tramos_combinados[[length(tramos_combinados)]] <- c(ultimo_tramo[1], fin)
+    } else {
+      # Agregar tramo como nuevo si no se fusiona
+      tramos_combinados <- c(tramos_combinados, list(tramo))
+    }
+  } else {
+    # Primer tramo de desorden
+    tramos_combinados <- c(tramos_combinados, list(tramo))
+  }
+}
+
+# Filtrar tramos combinados para eliminar pequeños tramos de 1 o 2 residuos
+for (tramo in tramos_combinados) {
+  inicio <- tramo[1]
+  fin <- tramo[2]
+  
+  # Verificar longitud del tramo desordenado
+  longitud_desorden <- fin - inicio + 1
+  
+  # Verificar si el tramo debe ser filtrado
+  if (longitud_desorden > 2 ||  # Mantener tramos de desorden largos
+      (inicio > 1 && fin < nrow(df) &&  # Tramos de desorden flanqueados por estructura larga
+       all(df$DESORDEN[(inicio - 2):(inicio - 1)] == "estructura") &&
+       all(df$DESORDEN[(fin + 1):(fin + 1)] == "estructura")) ||
+      (inicio == 1 && fin < nrow(df) &&  # Tramos de desorden al inicio flanqueados por estructura larga
+       all(df$DESORDEN[(fin + 1):(fin + 1)] == "estructura")) ||
+      (inicio > 1 && fin == nrow(df) &&  # Tramos de desorden al final flanqueados por estructura larga
+       all(df$DESORDEN[(inicio - 2):(inicio - 1)] == "estructura"))) {
+    
+    tramos_filtrados <- c(tramos_filtrados, list(tramo))  # Mantener tramo filtrado
+  }
+}
+
+print(tramos_filtrados)
+}
+```
+
+
+## Proteína ELF4
+
+Carga de datos de cada uno de los predictores:
+
+```{r}
+ELF4.IUPred2A <- read.delim("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 IUPred2A.txt")
+
+ELF4.AUCpreD <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 AUCpreD.diso_noprof", quote="\"",
+                           col.names = c("POS", "AA", "IDR", "AUCPRED.SCORE"))
+ELF4.DISOPred <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 DISOPred.comb", quote="\"",
+                            col.names = c("POS", "AA", "IDR", "DISOPRED.SCORE"))
+ELF4.PrDOS <- read_csv("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 PrDOS.csv", 
+                       col_names = c("POS", "AA", "IDR", "PRDOS.SCORE"))
+
+ELF4.flDPnn <- scan("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 flDPnn.txt", sep = ",")
+ELF4.flDPnn <- data.frame(POS = 1:111, FLDPNN.SCORE = ELF4.flDPnn)
+
+ELF4.DisoFLAG <- scan("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF4 DisoFLAG.txt", sep = ",")
+ELF4.DisoFLAG <- data.frame(POS = 1:111, DISOFLAG.SCORE = ELF4.DisoFLAG)
+```
+
+Agrupación de datos en un solo dataframe: 
+
+```{r}
+ELF4.IDR <- data.frame(
+  POS = ELF4.IUPred2A$POS,
+  IUPRED.SCORE = ELF4.IUPred2A$IUPRED.SCORE,
+  AUCPRED.SCORE = ELF4.AUCpreD$AUCPRED.SCORE,
+  DISOPRED.SCORE = ELF4.DISOPred$DISOPRED.SCORE,
+  PRDOS.SCORE = ELF4.PrDOS$PRDOS.SCORE,
+  DISOFLAG = ELF4.DisoFLAG$DISOFLAG.SCORE,
+  FLDPNN.SCORE = ELF4.flDPnn$FLDPNN.SCORE
+)
+```
+
+Establecer consenso de desorden por mayoría, si al menos 3 de los 5 algoritmos de predicción (omitiendo flDPnn) otorgan un valor igual o superior a 0.5:
+
+```{r}
+ELF4.IDR$DESORDEN <- "estructura"
+ELF4.IDR$conteo_desorden <- rowSums(ELF4.IDR[, c("IUPRED.SCORE", "AUCPRED.SCORE", "DISOPRED.SCORE", "PRDOS.SCORE", "DISOFLAG")] >= 0.5)
+ELF4.IDR$DESORDEN[ELF4.IDR$conteo_desorden >= 3] <- "desorden"
+```
+
+Listar y filtrar los tramos de desorden: 
+
+```{r}
+ELF4_tramosIDR <- idr(ELF4.IDR)
+
+# Crear el dataframe desde la lista de listas
+ELF4_tramosIDRdf <- do.call(rbind, lapply(ELF4_tramosIDR, function(x) data.frame(inicio = x[1], fin = x[2])))
+
+saveRDS(ELF4_tramosIDRdf, file = "ELF4_tramosIDR.rds")
+```
+´
+Representación:
+
+```{r}
+ggplot() +
+  # Línea horizontal que representa la secuencia completa
+  geom_segment(aes(x = 1, xend = 111, y = 1, yend = 1), size = 2, color = "grey") +
+  # Segmentos que representan las regiones desordenadas
+  geom_segment(data = ELF4_tramosIDRdf, aes(x = inicio, xend = fin, y = 1, yend = 1), size = 5, color = "blue") +
+  # Etiquetas para los valores de inicio y fin de cada tramo desordenado
+  geom_text_repel(data = ELF4_tramosIDRdf, aes(x = inicio, y = 1, label = inicio), 
+                  size = 3, nudge_y = 0.1, color = "black", force = 1, max.overlaps = 2) +
+  geom_text_repel(data = ELF4_tramosIDRdf, aes(x = fin, y = 1, label = fin), 
+                  size = 3, nudge_y = 0.7, color = "black", force = 1, max.overlaps = 2) +
+  labs(title = "Regiones desordenadas en la secuencia de aminoácidos",
+       x = "Posición en la secuencia",
+       y = "") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+```
+
+
+## Proteína LUX
+
+Carga de datos de cada uno de los predictores:
+
+```{r}
+LUX.IUPred2A <- read.delim("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX IUPred2A.txt")
+
+LUX.AUCpreD <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX AUCpreD.diso_noprof", quote="\"",
+                           col.names = c("POS", "AA", "IDR", "AUCPRED.SCORE"))
+LUX.DISOPred <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX DISOPred.comb", quote="\"",
+                            col.names = c("POS", "AA", "IDR", "DISOPRED.SCORE"))
+LUX.PrDOS <- read_csv("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX PrDOS.csv", 
+                       col_names = c("POS", "AA", "IDR", "PRDOS.SCORE"))
+
+LUX.flDPnn <- scan("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX flDPnn.txt", sep = ",")
+LUX.flDPnn <- data.frame(POS = 1:323, FLDPNN.SCORE = LUX.flDPnn)
+
+LUX.DisoFLAG <- scan("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/LUX DisoFLAG.txt", sep = ",")
+LUX.DisoFLAG <- data.frame(POS = 1:323, DISOFLAG.SCORE = LUX.DisoFLAG)
+```
+
+Agrupación de datos en un solo dataframe: 
+
+```{r}
+LUX.IDR <- data.frame(
+  POS = LUX.IUPred2A$POS,
+  IUPRED.SCORE = LUX.IUPred2A$IUPRED.SCORE,
+  AUCPRED.SCORE = LUX.AUCpreD$AUCPRED.SCORE,
+  DISOPRED.SCORE = LUX.DISOPred$DISOPRED.SCORE,
+  PRDOS.SCORE = LUX.PrDOS$PRDOS.SCORE,
+  DISOFLAG = LUX.DisoFLAG$DISOFLAG.SCORE,
+  FLDPNN.SCORE = LUX.flDPnn$FLDPNN.SCORE
+)
+```
+
+Establecer consenso de desorden por mayoría, si al menos 3 de los 5 algoritmos de predicción (omitiendo flDPnn) otorgan un valor igual o superior a 0.5:
+
+```{r}
+LUX.IDR$DESORDEN <- "estructura"
+LUX.IDR$conteo_desorden <- rowSums(LUX.IDR[, c("IUPRED.SCORE", "AUCPRED.SCORE", "DISOPRED.SCORE", "PRDOS.SCORE", "DISOFLAG")] >= 0.5)
+LUX.IDR$DESORDEN[LUX.IDR$conteo_desorden >= 3] <- "desorden"
+```
+
+Listar y filtrar los tramos de desorden: 
+
+```{r}
+LUX_tramosIDR <- idr(LUX.IDR)
+
+# Crear el dataframe desde la lista de listas
+LUX_tramosIDRdf <- do.call(rbind, lapply(LUX_tramosIDR, function(x) data.frame(inicio = x[1], fin = x[2])))
+
+saveRDS(LUX_tramosIDRdf, file = "LUX_tramosIDR.rds")
+```
+
+Representación:
+
+```{r}
+ggplot() +
+  # Línea horizontal que representa la secuencia completa
+  geom_segment(aes(x = 1, xend = 323, y = 1, yend = 1), size = 2, color = "grey") +
+  # Segmentos que representan las regiones desordenadas
+  geom_segment(data = LUX_tramosIDRdf, aes(x = inicio, xend = fin, y = 1, yend = 1), size = 5, color = "orange") +
+  # Etiquetas para los valores de inicio y fin de cada tramo desordenado
+  geom_text_repel(data = LUX_tramosIDRdf, aes(x = inicio, y = 1, label = inicio), 
+                  size = 3, nudge_y = 0.1, color = "black", force = 1, max.overlaps = 2) +
+  geom_text_repel(data = LUX_tramosIDRdf, aes(x = fin, y = 1, label = fin), 
+                  size = 3, nudge_y = 0.7, color = "black", force = 1, max.overlaps = 2) +
+  labs(title = "Regiones desordenadas en la secuencia de aminoácidos",
+       x = "Posición en la secuencia",
+       y = "") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+```
+
+
+## Proteína ELF3
+
+Carga de datos de cada uno de los predictores:
+
+```{r}
+ELF3.IUPred2A <- read.delim("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 IUPred2A.txt")
+
+ELF3.AUCpreD <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 AUCpreD.diso_noprof", quote="\"",
+                           col.names = c("POS", "AA", "IDR", "AUCPRED.SCORE"))
+ELF3.DISOPred <- read.table("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 DISOPred.comb", quote="\"",
+                            col.names = c("POS", "AA", "IDR", "DISOPRED.SCORE"))
+ELF3.PrDOS <- read_csv("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 PrDOS.csv", 
+                       col_names = c("POS", "AA", "IDR", "PRDOS.SCORE"))
+
+ELF3.flDPnn <- scan("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 flDPnn.txt", sep = ",")
+ELF3.flDPnn <- data.frame(POS = 1:695, FLDPNN.SCORE = ELF3.flDPnn)
+
+ELF3.DisoFLAG <- scan("C:/Users/josea/OneDrive/Escritorio/Predicciones IDR/ELF3 DisoFLAG.txt", sep = ",")
+ELF3.DisoFLAG <- data.frame(POS = 1:695, DISOFLAG.SCORE = ELF3.DisoFLAG)
+```
+
+Agrupación de datos en un solo dataframe: 
+
+```{r}
+ELF3.IDR <- data.frame(
+  POS = ELF3.IUPred2A$POS,
+  IUPRED.SCORE = ELF3.IUPred2A$IUPRED.SCORE,
+  AUCPRED.SCORE = ELF3.AUCpreD$AUCPRED.SCORE,
+  DISOPRED.SCORE = ELF3.DISOPred$DISOPRED.SCORE,
+  PRDOS.SCORE = ELF3.PrDOS$PRDOS.SCORE,
+  DISOFLAG = ELF3.DisoFLAG$DISOFLAG.SCORE,
+  FLDPNN.SCORE = ELF3.flDPnn$FLDPNN.SCORE
+)
+```
+
+Establecer consenso de desorden por mayoría, si al menos 3 de los 5 algoritmos de predicción (omitiendo flDPnn) otorgan un valor igual o superior a 0.5:
+
+```{r}
+ELF3.IDR$DESORDEN <- "estructura"
+ELF3.IDR$conteo_desorden <- rowSums(ELF3.IDR[, c("IUPRED.SCORE", "AUCPRED.SCORE", "DISOPRED.SCORE", "PRDOS.SCORE", "DISOFLAG")] >= 0.5)
+ELF3.IDR$DESORDEN[ELF3.IDR$conteo_desorden >= 3] <- "desorden"
+```
+
+Listar y filtrar los tramos de desorden: 
+
+```{r}
+ELF3_tramosIDR <- idr(ELF3.IDR)
+
+# Crear el dataframe desde la lista de listas
+ELF3_tramosIDRdf <- do.call(rbind, lapply(ELF3_tramosIDR, function(x) data.frame(inicio = x[1], fin = x[2])))
+
+saveRDS(ELF3_tramosIDRdf, file = "ELF3_tramosIDR.rds")
+```
+
+Representación:
+
+```{r}
+ggplot() +
+  # Línea horizontal que representa la secuencia completa
+  geom_segment(aes(x = 1, xend = 695, y = 1, yend = 1), size = 2, color = "grey") +
+  # Segmentos que representan las regiones desordenadas
+  geom_segment(data = ELF3_tramosIDRdf, aes(x = inicio, xend = fin, y = 1, yend = 1), size = 5, color = "red") +
+  # Etiquetas para los valores de inicio y fin de cada tramo desordenado
+  geom_text_repel(data = ELF3_tramosIDRdf, aes(x = inicio, y = 1, label = inicio), 
+                  size = 3, nudge_y = 0.1, color = "black", force = 1, max.overlaps = 2) +
+  geom_text_repel(data = ELF3_tramosIDRdf, aes(x = fin, y = 1, label = fin), 
+                  size = 3, nudge_y = 0.7, color = "black", force = 1, max.overlaps = 2) +
+  labs(title = "Regiones desordenadas en la secuencia de aminoácidos",
+       x = "Posición en la secuencia",
+       y = "") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+```
