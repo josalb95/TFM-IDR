@@ -1,0 +1,15 @@
+[{
+ "name": "ELF4",
+ "modelSeeds": [
+  "12345"
+ ],
+ "sequences": [
+  {
+   "proteinChain": {
+    "sequence": "MKRNGETKRRRNVAEEAEQGEDPAMWENLDRNFRQVQSVLDRNRSLIQQVNDNHQSRMADNMSKNVALIQELNGNISKVVNMYSDLNTSFSSGFHGGKNGHDGGGAAGTRA",
+    "count": 1
+   }
+  }
+ ]
+}
+]
